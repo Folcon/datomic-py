@@ -17,7 +17,7 @@ from itertools import izip
 
 class DB(object):
 
-  def __init__(self, host, port, store, db, schema=None, **kwargs):
+  def __init__(self, host, port, store, db, schema=None, timeout=3, **kwargs):
     """ Assuming the datomic REST service was started this way:
 
     > bin/rest -p 8888 mem datomic:mem://
@@ -33,7 +33,7 @@ class DB(object):
     self.uri_q   = "/api/query"
     self.pool    = urllib3.connectionpool.HTTPConnectionPool(
         self.host, port=self.port,
-        timeout=3, maxsize=20,
+        timeout=timeout, maxsize=20,
         headers={"Accept":"application/edn", "Connection": "Keep-Alive"})
     "debugging"
     for d in ('debug_http','debug_loads'):
