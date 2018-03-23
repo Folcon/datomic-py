@@ -1,6 +1,8 @@
+from __future__ import absolute_import
 
 __all__ = [ 
   'DB',
+  'keyword_get',
   'Schema',
   'STRING',
   'KEYWORD',
@@ -26,11 +28,12 @@ __all__ = [
   'ENUM',
   ]
 
-from datomic import (
+from .datomic import (
   DB,
+  keyword_get
   )
 
-from schema import (
+from .schema import (
   Schema,
   STRING,
   KEYWORD,

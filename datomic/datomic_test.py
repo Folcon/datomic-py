@@ -1,9 +1,11 @@
 # -*- coding: utf8 -*-
 """
 """
+from __future__ import print_function
+from __future__ import absolute_import
 
-from datomic import *
-from schema import *
+from .datomic import *
+from .schema import *
 import datetime
 from pprint import pprint as pp
 
@@ -149,12 +151,12 @@ def test_all():
   assert person  <= person2
 
   # acts like a dict
-  print person2.items()
-  print person2
+  print(list(person2.items()))
+  print(person2)
 
   # more dictish behavior
-  for k,v in rev2.iteritems():
-    print k,v
+  for k,v in rev2.items():
+    print(k,v)
 
   # dict access to full attribute
   assert rev2['review/strs'] == 5
@@ -224,9 +226,9 @@ def test_all():
   
   # datums
   for r in db.datoms('aevt', a='person/name', limit=100):
-    print r
+    print(r)
   for r in db.datoms('avet', a='order/idx', v='test-idx', limit=100):
-    print r
+    print(r)
 
 
 if __name__ == '__main__':

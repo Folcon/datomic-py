@@ -1,18 +1,34 @@
 # -*- coding: utf-8 -*-
 """
 """
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import str
+from builtins import zip
+from builtins import object
+from past.utils import old_div
 import datetime
 import urllib3
+import abc
 
 from pprint import pprint as pp
 from termcolor import colored as cl
 import logging
+import collections
 
-from schema import Schema
+from .schema import Schema
 
-from clj import dumps, loads
+from edn_format import dumps, loads, Keyword
 import json
-from itertools import izip
+
+
+def keyword_get(d, key):
+  try:
+    val = d[key]
+  except KeyError as e:
+    val = d[Keyword(key)]
+  return val
 
 
 class DB(object):
@@ -111,7 +127,7 @@ class DB(object):
     ops = []
     for op in args:
       if isinstance(op, list):            ops += op
-      elif isinstance(op, (str,unicode)): ops.append(op)
+      elif isinstance(op, str): ops.append(op)
     if 'debug' in kwargs: pp(ops)
     tx_proc ="[ %s ]" % "".join(ops)
     x = self.rest('POST', self.uri_db, data={"tx-data": tx_proc})
@@ -123,7 +139,7 @@ class DB(object):
     ta = datetime.datetime.now()
     rs = self.rest('GET', self.uri_db + '-/entity', data={'e':int(eid)}, parse=True)
     tb =  datetime.datetime.now() - ta
-    print cl('<<< fetched entity %s in %sms' % (eid, tb.microseconds/1000.0), 'cyan')
+    print(cl('<<< fetched entity %s in %sms' % (eid, old_div(tb.microseconds,1000.0)), 'cyan'))
     return rs
 
   def retract(self, e, a, v):
@@ -133,7 +149,7 @@ class DB(object):
     ret = u"[:db/retract %i :%s %s]" % (e, a, dump_edn_val(v))
     rs = self.tx(ret)
     tb = datetime.datetime.now() - ta
-    print cl('<<< retracted %s,%s,%s in %sms' % (e,a,v, tb.microseconds/1000.0), 'cyan')
+    print(cl('<<< retracted %s,%s,%s in %sms' % (e,a,v, old_div(tb.microseconds,1000.0)), 'cyan'))
     return rs
 
 
@@ -166,8 +182,8 @@ class DB(object):
       if not len(rs):
         rs = False
       tb = datetime.datetime.now() - ta
-      print cl('<<< fetched %i datoms at offset %i in %sms' % (
-        len(rs), data['offset'], tb.microseconds/1000.0), 'cyan')
+      print(cl('<<< fetched %i datoms at offset %i in %sms' % (
+        len(rs), data['offset'], old_div(tb.microseconds,1000.0)), 'cyan'))
       for r in rs: yield r
       data['offset'] += chunk
 
@@ -176,10 +192,10 @@ class DB(object):
     """
     r = self.pool.request_encode_body(method, uri, fields=data, encode_multipart=False)
     if not r.status in (status_codes if status_codes else (200,201)):
-      print cl('\n---------\nURI / REQUEST TYPE : %s %s' % (uri, method), 'red')
-      print cl(data, 'red')
-      print r.headers
-      raise Exception, "Invalid status code: %s" % r.status
+      print(cl('\n---------\nURI / REQUEST TYPE : %s %s' % (uri, method), 'red'))
+      print(cl(data, 'red'))
+      print(r.headers)
+      raise Exception("Invalid status code: %s" % r.status)
     if not parse: 
       " return raw urllib3 response"
       return r
@@ -197,9 +213,9 @@ class DB(object):
     rs = defn(*args, **kwargs)  
     tb = datetime.datetime.now() - ta
     fmt = fmt or "processed {defn} in {ms}ms"
-    logmsg = fmt.format(ms=tb.microseconds/1000.0, defn=defn)
+    logmsg = fmt.format(ms=old_div(tb.microseconds,1000.0), defn=defn)
     "terminal output"
-    print cl(logmsg, color)
+    print(cl(logmsg, color))
     "logging output"
     logging.debug(logmsg)
     return rs
@@ -249,7 +265,7 @@ class Query(object):
     self.find(find)
   
   def __repr__(self):
-    return " ".join([str(self._find), str(self._in), str(self._where)])
+    return " ".join([str(self._find), str(self._input), str(self._where)])
   
   def find(self, *args, **kwargs):
     " :find "
@@ -306,7 +322,7 @@ class Query(object):
       return {}
     else:
       finds = " ".join(self._find).split(' ')
-      return dict(zip((x.replace('?','') for x in finds), rs))
+      return dict(list(zip((x.replace('?','') for x in finds), rs)))
   
   def one(self):
     "execute query, get a single list"
@@ -341,7 +357,7 @@ class Query(object):
       inputs = u":in ${0}".format(inputs)
     " :where "
     for where in self._where:
-      if isinstance(where, (str,unicode)): 
+      if isinstance(where, str): 
         wheres += u"[{0}]".format(where)
       elif isinstance(where, (list)):
         wheres += u" ".join([u"[{0}]".format(w) for w in where])
@@ -361,8 +377,7 @@ class Query(object):
 
 
 
-
-class E(dict):
+class E:#(dict):
   """ An entity and its db, optionally a tx.
   """
   def __init__(self, e, db=None, tx=None):
@@ -399,6 +414,8 @@ class E(dict):
 
   def __repr__(self):
     return "{'db/id': %s}" % cl(self._eid, 'magenta')
+  def __str__(self):
+    return u"#db/id[:db.part/user %s]" % self._eid
   def __unicode__(self):
     return u"#db/id[:db.part/user %s]" % self._eid
   def __int__(self):
@@ -450,7 +467,7 @@ class E(dict):
     if val: return self.vpar(v)
 
     rs, ns = {}, '{0}/'.format(attr)
-    for k,v in self.__dict__.iteritems():
+    for k,v in self.__dict__.items():
       if k.startswith(ns):
         attr = "/".join(k.split('/')[1:])
         vp = self.vpar(v)
@@ -482,8 +499,6 @@ class E(dict):
       a = u':%s' % v
     self._db.tx(u'[:db/retract {0} {1} {2}]'.\
                 format(self.eid, a, dump_edn_val(v)))
-
-
 
 
 
@@ -540,38 +555,39 @@ class TX(object):
 
     assert self.resp is None, "Transaction already committed"
     entity, av_pairs, args = None, [], list(args)
+    print(args)
     if len(args):
-      if isinstance(args[0], (int, long)): 
-        " first arg is an entity or tempid"
+      if isinstance(args[0], int): 
+        print(" first arg is an entity or tempid")
         entity = E(args[0], tx=self)
       elif isinstance(args[0], E):
-        " dont resuse entity from another tx"
+        print(" dont resuse entity from another tx")
         if args[0]._tx is self:
           entity  = args[0]
         else:
           if int(args[0]) > 0:
-            " use the entity id on a new obj"
+            print(" use the entity id on a new obj")
             entity = E(int(args[0]), tx=self)
           args[0] = None
-      " drop the first arg"
+      print(" drop the first arg")
       if entity is not None or args[0] in (None, False, 0):
         v = args.pop(0)
-    " auto generate a temp id?"
+    print(" auto generate a temp id?")
     if entity is None:
       entity       = E(self.ctmpid, tx=self)
       self.ctmpid -= 1
-    " a,v from kwargs"
+    print(" a,v from kwargs")
     if len(args) == 0 and kwargs: 
-      for a,v in kwargs.iteritems():
+      for a,v in kwargs.items():
         self.addeav(entity, a, v)
-    " a,v from args "
+    print(" a,v from args ")
     if len(args):
       assert len(args) % 2 == 0, "imbalanced a,v in args: " % args
       for first, second in pairwise(args):
         if not first.startswith(':'): 
           first = ':' + first
         if not first.endswith('/'):
-          " longhand used: blah/blah "
+          print(" longhand used: blah/blah ")
           if isinstance(second, list):
             for v in second:
               self.addeav(entity, first, v)
@@ -579,8 +595,8 @@ class TX(object):
             self.addeav(entity, first, second)
           continue
         elif isinstance(second, dict):
-          " shorthand used: blah/, dict "
-          for a,v in second.iteritems():
+          print(" shorthand used: blah/, dict ")
+          for a,v in second.items():
             self.addeav(entity, "%s%s" % (first, a), v)
             continue
         elif isinstance(second, (list, tuple)):
@@ -589,7 +605,7 @@ class TX(object):
             self.addeav(entity, "%s%s" % (first, a), v)
             continue
         else:
-          raise Exception, "invalid pair: %s : %s" % (first,second)
+          raise Exception("invalid pair: %s : %s" % (first,second))
     "pass back the entity so it can be resolved after tx()"
     return entity
   
@@ -597,6 +613,8 @@ class TX(object):
     """ commit the current statements from add()
     """
     assert self.resp is None, "Transaction already committed"
+    print('execute::', list(self.edn_iter))
+    # return
     try:
       self.resp = self.db.tx(list(self.edn_iter), **kwargs)
     except Exception:
@@ -612,9 +630,11 @@ class TX(object):
     """ Resolve one or more tempids. 
     Automatically takes place after transaction is executed.
     """
-    assert isinstance(self.resp, dict), "Transaction in uncommitted or failed state"
-    rids = [(v) for k,v in self.resp['tempids'].items()]
-    self.txid = self.resp['tx-data'][0]['tx']
+    assert isinstance(self.resp, (dict, collections.Mapping)), "Transaction in uncommitted or failed state"
+    tempids = keyword_get(self.resp, 'tempids')
+    rids = [(v) for k,v in list(tempids.items())]
+    tx_data = keyword_get(self.resp, 'tx-data')
+    self.txid = keyword_get(tx_data[0], 'tx')
     rids.reverse()
     for t in self.tmpents:
       pos = self.tmpents.index(t)
@@ -635,22 +655,35 @@ class TX(object):
     """ yields edns
     """
     for e,a,v in self.adds:
+      print('eva::', e, a, v)
       yield u"{%(a)s %(v)s :db/id #db/id[:db.part/user %(e)s ]}" % \
             dict(a=a, v=dump_edn_val(v), e=int(e))
 
 
 
-
 def dump_edn_val(v):
   " edn simple value dump"
-  if isinstance(v, (str, unicode)): 
+  print(v, type(v), repr(E), type(E), isinstance(v, E), isinstance(v, collections.Mapping))
+  if isinstance(v, str):
     return json.dumps(v)
-  elif isinstance(v, E):            
-    return unicode(v)
-  else:                             
+  elif isinstance(v, list):
+  #   print('list:map::', list(map(dump_edn_val, v)), repr(list(map(dump_edn_val, v))))
+  #   return json.dumps(list(map(dump_edn_val, v)))#str(v)#json.dumps(list(map(str, v)))
+    print('list:map::', list(map(dump_edn_val, v)), json.dumps(list(map(dump_edn_val, v))), dumps(list(map(dump_edn_val, v))))
+    return json.dumps(list(map(dump_edn_val, v)))
+  elif isinstance(v, bool):
+    return json.dumps(v)
+  elif isinstance(v, E):#(E, collections.Mapping)):
+    print("E", v, repr(v), v.eid, u':db/id #db/id[:db.part/user %(e)s' % {'e': v.eid})
+    # return u'#db/id[:db.part/user %(e)s]' % {'e': v.eid}
+    return str(v)
+  elif isinstance(v, int):
+    return v
+  else:
+    print("else", dumps(v))
     return dumps(v)
 
 def pairwise(iterable):
   "s -> (s0,s1), (s2,s3), (s4, s5), ..."
   a = iter(iterable)
-  return izip(a, a)
+  return zip(a, a)
